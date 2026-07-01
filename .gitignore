@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Secrets / environment
+.env
+*.key
+.streamlit/secrets.toml
+
+# Generated output
+purchase_order.csv
+purchase_order.txt
+RecipeNLG_dataset.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent / session scratch
+.agents/
+
+# Personal build journey (kept local, not for the public repo)
+Sous_Complete_Build.ipynb
+sous-build-tutorial.md
+
+# Internal working docs (folded into the README instead)
+sous-project-brief.md
+sous-gtm.md
+ARCHITECTURE.md
+
+# Submission artifacts (submitted separately)
+*.pptx

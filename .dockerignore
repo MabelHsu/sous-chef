@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.ipynb_checkpoints
+Sous_Complete_Build.ipynb
+*.md
+.git/
+.venv/
+RecipeNLG_dataset.csv
