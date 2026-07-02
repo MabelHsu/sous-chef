@@ -13,6 +13,9 @@ Config via environment variables:
   SOUS_DATASET     (default 'sous')
   GEMINI_API_KEY   (optional; enables the head-chef negotiation narrative)
   GEMINI_MODEL     (default 'gemini-3.1-flash-lite')
+  SOUS_PRICES_URI  (optional; gs://bucket/prices.json or https URL with today's
+                    {ingredient: INR/kg} - merged over the built-in snapshot, so
+                    the price feed can be swapped without redeploying)
 """
 import os
 import ast
@@ -67,7 +70,39 @@ SEASONAL_NORM_INR = {
     "garlic": 120, "green chilli": 60, "coriander": 40, "butter": 500, "cream": 300,
     "peas": 80, "carrot": 40, "lentils": 110, "oil": 150,
 }
+def _load_price_snapshot():
+    """Optional external daily price snapshot. SOUS_PRICES_URI can be a Cloud
+    Storage object (gs://bucket/prices.json) or an https URL; the JSON body is
+    {ingredient: INR_per_kg}. Any failure falls back to the built-in snapshot,
+    so a flaky feed can never take the demo down."""
+    uri = (os.environ.get("SOUS_PRICES_URI") or "").strip()
+    if not uri:
+        return None
+    try:
+        if uri.startswith("gs://"):
+            from google.cloud import storage
+            bucket_name, blob_name = uri[5:].split("/", 1)
+            body = (storage.Client(project=PROJECT_ID)
+                    .bucket(bucket_name).blob(blob_name).download_as_text())
+        else:
+            import requests
+            resp = requests.get(uri, timeout=10)
+            resp.raise_for_status()
+            body = resp.text
+        raw = json.loads(body)
+        return {str(k).lower().strip(): float(v) for k, v in raw.items()}
+    except Exception as e:
+        print(f"[prices] snapshot load failed, using built-in ({type(e).__name__}: {e})")
+        return None
+
+
 PRICES_TODAY = {k: round(v * PRICE_SPIKES.get(k, 1.0)) for k, v in SEASONAL_NORM_INR.items()}
+_EXTERNAL_PRICES = _load_price_snapshot()
+if _EXTERNAL_PRICES:
+    PRICES_TODAY.update({k: round(v) for k, v in _EXTERNAL_PRICES.items()})
+    PRICE_SOURCE = "Cloud Storage snapshot (SOUS_PRICES_URI)"
+else:
+    PRICE_SOURCE = "built-in daily snapshot (demo spike: tomato +40%)"
 
 PANTRY_STAPLES = {
     "salt", "sugar", "oil", "ghee", "water", "cumin", "turmeric", "coriander powder",
@@ -101,18 +136,27 @@ PIPELINE_STEPS = [
 ]
 
 
+_BQ_CLIENT = None
+
+
 def get_bq_client():
-    """BigQuery client, or None if creds/project aren't ready (lets the app degrade)."""
+    """BigQuery client, or None if creds/project aren't ready (lets the app degrade).
+    Memoized: Streamlit reruns the script on every interaction, and rebuilding the
+    client each time costs latency for no benefit."""
+    global _BQ_CLIENT
+    if _BQ_CLIENT is not None:
+        return _BQ_CLIENT
     try:
         from google.cloud import bigquery
-        return bigquery.Client(project=PROJECT_ID)
+        _BQ_CLIENT = bigquery.Client(project=PROJECT_ID)
+        return _BQ_CLIENT
     except Exception:
         return None
 
 
-def bq_read(client, sql):
+def bq_read(client, sql, job_config=None):
     """SQL -> DataFrame via Arrow, robust even if cudf.pandas poisoned pandas dtypes."""
-    return client.query(sql).to_arrow().to_pandas()
+    return client.query(sql, job_config=job_config).to_arrow().to_pandas()
 
 
 def gemini_text(prompt):
@@ -210,10 +254,21 @@ def menu_agent(inventory, top_k=6, force_demo=False):
     try:
         if client is None:
             raise RuntimeError("demo")
-        hits = " + ".join([f"CAST(LOWER(NER) LIKE '%{i}%' AS INT64)" for i in items])
+        from google.cloud import bigquery
+        # Parameterized query: chef-typed stock names never touch the SQL string,
+        # and maximum_bytes_billed caps the cost of a runaway scan.
+        safe_items = [i for i in items if i.strip()][:16]
+        hits = " + ".join(
+            f"CAST(LOWER(NER) LIKE CONCAT('%', @item_{n}, '%') AS INT64)"
+            for n in range(len(safe_items)))
         sql = f"""SELECT title, NER, ({hits}) AS stock_hits FROM `{RECIPES_TABLE}`
                   WHERE ({hits}) >= 3 ORDER BY stock_hits DESC LIMIT 50"""
-        rows = bq_read(client, sql)
+        cfg = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter(f"item_{n}", "STRING", item.lower())
+                for n, item in enumerate(safe_items)],
+            maximum_bytes_billed=20 * 1024**3)
+        rows = bq_read(client, sql, cfg)
         dishes = []
         for _, r in rows.iterrows():
             ner = _parse_ingredients(r["NER"])
@@ -264,6 +319,8 @@ Output plain text:
 1) TODAY'S 3 SPECIALS - each with a one-line WHY citing the actual trade-off (cost / spike / expiry).
 2) NEGOTIATION LOG - 2-3 lines on where signals CONFLICTED and how you resolved them.
 3) PRODUCE PURCHASE ORDER - the produce to buy across the chosen specials.
+4) FINAL LINE - machine-readable, exactly this format, using the exact candidate titles:
+PICKS: ["Dish A", "Dish B", "Dish C"]
 
 Candidate dishes (JSON):
 {json.dumps(brief, indent=2)}"""
@@ -271,11 +328,26 @@ Candidate dishes (JSON):
 
 
 def select_chosen(all_dishes, coord_text, brief=None, n=3):
-    """Pick n specials. With a Gemini negotiation, honour its named picks.
+    """Pick n specials. With a Gemini negotiation, honour its picks: first the
+    machine-readable PICKS: [...] line (closes the free-text-matching seam),
+    then title substring matching as a fallback for older-style responses.
     The DETERMINISTIC fallback is margin-aware: prefer dishes UNDER the food-cost
     target first, then ones that clear near-expiry stock, then the lowest food cost.
     (Previously it ranked only by expiry/stock and could pick over-target dishes.)"""
     if coord_text:
+        by_title = {d["title"].lower(): d for d in all_dishes}
+        for line in reversed(coord_text.strip().splitlines()):
+            upper = line.upper()
+            if "PICKS:" in upper:
+                try:
+                    names = json.loads(line[upper.index("PICKS:") + 6:].strip())
+                    picked = [by_title[str(nm).lower().strip()] for nm in names
+                              if str(nm).lower().strip() in by_title]
+                    if picked:
+                        return picked[:n]
+                except Exception:
+                    pass
+                break
         picked = [d for d in all_dishes if d["title"].lower() in coord_text.lower()]
         if picked:
             return picked[:n]
@@ -390,15 +462,23 @@ def today_brief(inventory):
 
 
 def run_pipeline(inventory, force_demo=False):
-    """One call that runs the whole flow and returns everything the UI needs."""
+    """One call that runs the whole flow and returns everything the UI needs.
+    Includes wall-clock timings so the UI can show time-to-decision honestly."""
+    import time
+    t0 = time.perf_counter()
     dishes, menu_source = menu_agent(inventory, force_demo=force_demo)
+    t1 = time.perf_counter()
     brief = build_briefing(dishes)
     coord_text = coordinator(brief)
+    t2 = time.perf_counter()
     chosen = select_chosen(dishes, coord_text, brief)
     po = build_purchase_order(chosen, inventory)
+    t3 = time.perf_counter()
     return {"dishes": dishes, "menu_source": menu_source, "brief": brief,
             "coord_text": coord_text, "chosen": chosen, "po": po,
-            "trail": explain_trail(chosen, brief)}
+            "trail": explain_trail(chosen, brief),
+            "timings": {"menu_s": round(t1 - t0, 2), "negotiate_s": round(t2 - t1, 2),
+                        "order_s": round(t3 - t2, 2), "total_s": round(t3 - t0, 2)}}
 
 
 if __name__ == "__main__":

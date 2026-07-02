@@ -3,8 +3,8 @@ Sous - Streamlit interface.
 Run locally:   python -m streamlit run app.py
 Deploys to Cloud Run as-is. Works with no GCP/Gemini set (demo mode).
 
-The visual system is an original restaurant-service / guest-check treatment:
-aged newsprint, blue ink, red stamps, ticket rails, and time-card rhythm.
+The visual system is an original kitchen-service / guest-check treatment:
+cream paper, khaki time-cards, a near-black board, red stamps, slab-serif type.
 """
 import datetime
 import html
@@ -25,30 +25,38 @@ st.set_page_config(
 
 CSS = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Rokkitt:wght@500;600;700;800;900&display=swap');
+
 :root {
-  --paper: #d9d3c3;
-  --paper-deep: #c8c0ac;
-  --paper-warm: #eee9da;
-  --ink: #143c73;
-  --ink-soft: rgba(20, 60, 115, 0.72);
-  --red: #d4442e;
-  --red-dark: #9e2d23;
-  --steel: #4d5c59;
-  --steel-dark: #2e3a38;
-  --line: rgba(20, 60, 115, 0.44);
-  --shadow: rgba(46, 58, 56, 0.22);
-  --display-font: "Helvetica Neue Black", "HelveticaNeue-Black", "Arial Black", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --body-font: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --hand-font: "Segoe Print", "Bradley Hand ITC", "Comic Sans MS", cursive;
+  --paper: #F5F2EB;
+  --card: #E5E5E5;
+  --khaki: #C2B280;
+  --navy: #1A365D;
+  --teal: #005A5B;
+  --orange: #CC5500;
+  --gold: #D4AF37;
+  --danger: #C62828;
+  --board: #1A1A1A;
+  --ink: #1C1A17;
+  --ink-soft: rgba(28, 26, 23, 0.72);
+  --cream: #F5F2EB;
+  --line: rgba(26, 54, 93, 0.32);
+  --shadow: rgba(26, 54, 93, 0.22);
+  --display-font: "Lubalin Graph", "ITC Lubalin Graph", "Rockwell Extra Bold", "Rockwell", "Rokkitt", Georgia, serif;
+  --body-font: "Rockwell", "Rokkitt", Georgia, serif;
+  --mono-font: "Courier New", Courier, monospace;
   --action-font-size: 0.86rem;
 }
 
+.stApp,
+.stApp * {
+  letter-spacing: 0 !important;
+}
+
 .stApp {
-  color: #191611;
+  color: var(--ink);
   background:
-    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.18), transparent 22%),
-    repeating-linear-gradient(0deg, transparent 0, transparent 38px, rgba(20, 60, 115, 0.08) 39px),
-    repeating-linear-gradient(90deg, transparent 0, transparent 72px, rgba(20, 60, 115, 0.07) 73px),
+    repeating-linear-gradient(0deg, transparent 0, transparent 42px, rgba(26, 54, 93, 0.05) 43px),
     var(--paper);
 }
 
@@ -78,7 +86,6 @@ CSS = """
 
 h1, h2, h3, h4, p, li, label, span, div {
   font-family: var(--body-font);
-  letter-spacing: 0;
 }
 
 .guest-check {
@@ -86,9 +93,9 @@ h1, h2, h3, h4, p, li, label, span, div {
   overflow: hidden;
   border: 3px solid var(--ink);
   background:
-    repeating-linear-gradient(0deg, rgba(20, 60, 115, 0.16) 0 1px, transparent 1px 43px),
-    linear-gradient(180deg, var(--paper-warm), var(--paper));
-  box-shadow: 8px 8px 0 var(--ink);
+    repeating-linear-gradient(0deg, rgba(26, 54, 93, 0.08) 0 1px, transparent 1px 43px),
+    linear-gradient(180deg, var(--card), var(--paper));
+  box-shadow: 8px 8px 0 var(--navy);
   padding: 1rem 1.1rem 1.2rem;
   margin-bottom: 1.1rem;
 }
@@ -98,10 +105,10 @@ h1, h2, h3, h4, p, li, label, span, div {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.3;
   background-image:
-    linear-gradient(45deg, rgba(20, 60, 115, 0.08) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(212, 68, 46, 0.06) 25%, transparent 25%);
+    linear-gradient(45deg, rgba(26, 54, 93, 0.07) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(0, 90, 91, 0.06) 25%, transparent 25%);
   background-size: 5px 5px;
 }
 
@@ -111,21 +118,21 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .brand-lockup {
   text-align: center;
-  border-bottom: 4px double var(--ink);
+  border-bottom: 4px double var(--navy);
   padding-bottom: 0.65rem;
 }
 
 .brand-name {
-  color: var(--ink);
+  color: var(--navy);
   font-family: var(--display-font);
   font-weight: 900;
-  font-size: 5.45rem;
-  line-height: 0.82;
+  font-size: 5.2rem;
+  line-height: 0.92;
   text-transform: uppercase;
 }
 
 .brand-sub {
-  color: var(--ink);
+  color: var(--teal);
   font-size: 0.86rem;
   font-weight: 800;
   line-height: 1.05;
@@ -133,23 +140,23 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .count-line {
-  color: var(--red);
-  font-size: 0.76rem;
+  color: var(--orange);
+  font-size: 0.78rem;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.2;
   text-transform: lowercase;
 }
 
 .check-meta {
   display: grid;
   grid-template-columns: 1fr 1.3fr 0.8fr;
-  border-bottom: 3px solid var(--ink);
+  border-bottom: 3px solid var(--navy);
   margin-top: 0.65rem;
 }
 
 .meta-box {
   min-height: 62px;
-  border-right: 2px solid var(--ink);
+  border-right: 2px solid var(--navy);
   padding: 0.45rem 0.65rem;
 }
 
@@ -158,19 +165,24 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .meta-label {
-  color: var(--ink);
+  color: var(--navy);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .meta-value {
   margin-top: 0.15rem;
-  color: #1d1711;
-  font-family: var(--hand-font);
-  font-size: 1.18rem;
-  font-weight: 700;
-  line-height: 1.1;
+  color: var(--teal);
+  font-size: 1.22rem;
+  font-weight: 800;
+  line-height: 1.12;
+}
+
+.meta-value.mono {
+  font-family: var(--mono-font);
+  font-size: 1.02rem;
+  padding-top: 0.3rem;
 }
 
 .service-grid {
@@ -182,25 +194,25 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .service-copy {
-  color: #1d1711;
+  color: var(--ink);
   max-width: 760px;
 }
 
 .service-copy h1 {
-  color: var(--ink);
+  color: var(--navy);
   font-family: var(--display-font);
   font-weight: 900;
-  font-size: 3.18rem;
-  line-height: 0.95;
+  font-size: 2.95rem;
+  line-height: 1.02;
   margin: 0;
   text-transform: uppercase;
 }
 
 .service-copy p {
-  color: var(--steel-dark);
+  color: var(--ink-soft);
   max-width: 680px;
   margin: 0.75rem 0 0;
-  font-size: 0.98rem;
+  font-size: 1.02rem;
   font-weight: 500;
   line-height: 1.48;
 }
@@ -208,7 +220,7 @@ h1, h2, h3, h4, p, li, label, span, div {
 .can-sketch {
   align-self: end;
   min-height: 230px;
-  border-left: 3px solid var(--ink);
+  border-left: 3px solid var(--navy);
   padding-left: 1rem;
   display: grid;
   place-items: center;
@@ -220,10 +232,10 @@ h1, h2, h3, h4, p, li, label, span, div {
   border: 5px solid var(--ink);
   border-radius: 26px / 16px;
   background:
-    linear-gradient(90deg, transparent 0 31%, rgba(20, 60, 115, 0.16) 31% 32%, transparent 32% 63%, rgba(20, 60, 115, 0.16) 63% 64%, transparent 64%),
-    var(--paper-warm);
+    linear-gradient(90deg, transparent 0 31%, rgba(26, 54, 93, 0.16) 31% 32%, transparent 32% 63%, rgba(26, 54, 93, 0.16) 63% 64%, transparent 64%),
+    var(--card);
   position: relative;
-  box-shadow: 9px 10px 0 rgba(20, 60, 115, 0.16);
+  box-shadow: 9px 10px 0 rgba(26, 54, 93, 0.18);
 }
 
 .tomato-can:before,
@@ -252,14 +264,13 @@ h1, h2, h3, h4, p, li, label, span, div {
   right: 15px;
   top: 48px;
   z-index: 2;
-  background: rgba(238, 233, 218, 0.92);
-  border-top: 3px solid var(--ink);
-  border-bottom: 3px solid var(--ink);
+  background: rgba(245, 242, 235, 0.92);
+  border-top: 3px solid var(--navy);
+  border-bottom: 3px solid var(--navy);
   padding: 0.42rem 0.25rem;
-  color: var(--ink);
-  font-family: var(--hand-font);
-  font-size: 0.94rem;
-  font-weight: 700;
+  color: var(--teal);
+  font-size: 1.02rem;
+  font-weight: 800;
   line-height: 1.16;
   text-align: center;
   transform: rotate(-2deg);
@@ -278,16 +289,16 @@ h1, h2, h3, h4, p, li, label, span, div {
   width: 29px;
   height: 50px;
   border-radius: 47% 53% 45% 55%;
-  background: var(--red);
-  border: 2px solid var(--red-dark);
+  background: var(--orange);
+  border: 2px solid var(--danger);
 }
 
 .section-label {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  color: var(--ink);
-  font-size: 0.74rem;
+  color: var(--navy);
+  font-size: 0.76rem;
   font-weight: 800;
   line-height: 1.2;
   margin: 1.15rem 0 0.65rem;
@@ -298,8 +309,8 @@ h1, h2, h3, h4, p, li, label, span, div {
   content: "";
   height: 2px;
   flex: 1;
-  background: var(--ink);
-  opacity: 0.42;
+  background: var(--navy);
+  opacity: 0.4;
 }
 
 .section-num {
@@ -308,17 +319,17 @@ h1, h2, h3, h4, p, li, label, span, div {
   width: 28px;
   height: 28px;
   border: 2px solid var(--ink);
-  background: var(--paper-warm);
-  color: var(--red);
-  box-shadow: 3px 3px 0 var(--ink);
+  background: var(--card);
+  color: var(--orange);
+  box-shadow: 3px 3px 0 var(--navy);
 }
 
 .brief-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 3px solid var(--ink);
-  background: rgba(255, 248, 232, 0.84);
-  box-shadow: 6px 6px 0 rgba(20, 60, 115, 0.22);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--shadow);
 }
 
 .brief-cell {
@@ -332,46 +343,46 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .brief-kicker {
-  color: var(--red);
+  color: var(--orange);
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .brief-title {
-  color: var(--ink);
+  color: var(--navy);
   margin-top: 0.2rem;
   font-size: 1.05rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .brief-body {
-  color: var(--steel-dark);
+  color: var(--ink-soft);
   margin-top: 0.35rem;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   line-height: 1.38;
 }
 
 .station-rack {
   position: relative;
-  border: 3px solid var(--steel-dark);
+  border: 3px solid var(--board);
   background:
-    radial-gradient(circle at 18px 18px, rgba(25, 22, 17, 0.55) 0 3px, rgba(255, 248, 232, 0.22) 4px 6px, transparent 7px),
-    radial-gradient(circle at calc(100% - 22px) 20px, rgba(25, 22, 17, 0.5) 0 3px, rgba(255, 248, 232, 0.18) 4px 6px, transparent 7px),
-    repeating-linear-gradient(0deg, #54625f 0 52px, #2f3a38 52px 58px),
-    var(--steel);
+    radial-gradient(circle at 18px 18px, rgba(212, 175, 55, 0.35) 0 3px, rgba(212, 175, 55, 0.1) 4px 6px, transparent 7px),
+    radial-gradient(circle at calc(100% - 22px) 20px, rgba(194, 178, 128, 0.32) 0 3px, rgba(194, 178, 128, 0.1) 4px 6px, transparent 7px),
+    repeating-linear-gradient(0deg, #1A1A1A 0 52px, #1C1A17 52px 58px),
+    var(--board);
   padding: 1rem 0.85rem 0.9rem;
-  box-shadow: inset 0 0 0 2px rgba(255, 248, 232, 0.12), 8px 10px 0 rgba(46, 58, 56, 0.22);
-  color: var(--paper-warm);
+  box-shadow: inset 0 0 0 2px rgba(245, 242, 235, 0.09), 8px 10px 0 rgba(26, 54, 93, 0.3);
+  color: var(--khaki);
   transform: rotate(-1.2deg);
   transform-origin: 48% 8%;
   margin: 0.25rem 0 1.1rem;
 }
 
 .rack-title {
-  color: var(--paper-warm);
-  font-size: 0.76rem;
+  color: var(--cream);
+  font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.15;
   text-transform: uppercase;
@@ -379,15 +390,14 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .rack-card {
   margin-top: 0.55rem;
-  background: var(--paper);
-  color: #1d1711;
-  border: 1px solid rgba(25, 22, 17, 0.24);
-  padding: 0.42rem 0.5rem;
-  transform: none;
-  font-family: var(--hand-font);
-  font-size: 0.9rem;
-  font-weight: 700;
-  line-height: 1.28;
+  background: var(--khaki);
+  color: var(--ink);
+  border: 1px solid rgba(26, 54, 93, 0.38);
+  border-left: 4px solid var(--orange);
+  padding: 0.42rem 0.55rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .status-dot {
@@ -397,11 +407,11 @@ h1, h2, h3, h4, p, li, label, span, div {
   margin-right: 0.45rem;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  background: #73807d;
+  background: var(--khaki);
 }
 
 .status-dot.on {
-  background: #5c8a51;
+  background: var(--teal);
 }
 
 .status-stack {
@@ -415,9 +425,8 @@ h1, h2, h3, h4, p, li, label, span, div {
   display: flex;
   align-items: center;
   color: var(--ink);
-  font-family: var(--body-font);
-  font-size: 0.74rem;
-  font-weight: 500;
+  font-size: 0.76rem;
+  font-weight: 600;
   line-height: 1.22;
 }
 
@@ -431,30 +440,56 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .call-ticket {
   border: 3px solid var(--ink);
-  background: var(--paper-warm);
-  box-shadow: 6px 6px 0 var(--ink);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--navy);
   padding: 1rem;
-  color: var(--steel-dark);
+  color: var(--ink-soft);
 }
 
 .call-ticket strong {
-  color: var(--ink);
+  color: var(--navy);
 }
 
 .alert-ticket {
-  border: 3px solid var(--red-dark);
+  border: 3px solid var(--danger);
   border-left-width: 12px;
-  background: #ffe1d5;
-  color: #30130e;
+  background: rgba(198, 40, 40, 0.1);
+  color: var(--ink);
   padding: 0.9rem 1rem;
-  box-shadow: 5px 5px 0 rgba(158, 45, 35, 0.24);
+  box-shadow: 5px 5px 0 rgba(198, 40, 40, 0.22);
 }
 
 .alert-ticket .alert-kicker {
-  color: var(--red-dark);
+  color: var(--danger);
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
+}
+
+.decision-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  border: 3px solid var(--ink);
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: 6px 6px 0 var(--gold);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.ds-k {
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ds-b {
+  color: var(--cream);
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .ticket-rail {
@@ -468,11 +503,11 @@ h1, h2, h3, h4, p, li, label, span, div {
   min-height: 245px;
   border: 2px solid var(--ink);
   background:
-    repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(20, 60, 115, 0.2) 32px),
-    var(--paper-warm);
-  box-shadow: 5px 5px 0 var(--ink);
+    repeating-linear-gradient(0deg, transparent 0, transparent 31px, rgba(26, 54, 93, 0.12) 32px),
+    var(--card);
+  box-shadow: 5px 5px 0 var(--navy);
   padding: 0.75rem;
-  color: #1d1711;
+  color: var(--ink);
 }
 
 .ticket-top {
@@ -483,50 +518,50 @@ h1, h2, h3, h4, p, li, label, span, div {
   padding-bottom: 0.45rem;
   color: var(--ink);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .ticket-dish {
-  color: var(--ink);
+  color: var(--navy);
   min-height: 55px;
   margin-top: 0.75rem;
   font-family: var(--display-font);
   font-weight: 900;
-  font-size: 1.56rem;
-  line-height: 0.98;
+  font-size: 1.45rem;
+  line-height: 1.04;
   text-transform: uppercase;
 }
 
 .ticket-note {
-  color: var(--steel-dark);
+  color: var(--ink-soft);
   margin-top: 0.6rem;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   line-height: 1.38;
 }
 
 .stamp {
   display: inline-block;
-  border: 3px solid var(--red);
-  color: var(--red);
+  border: 3px solid var(--orange);
+  color: var(--orange);
   margin-top: 0.85rem;
   padding: 0.18rem 0.55rem;
-  font-weight: 700;
+  font-weight: 800;
   transform: rotate(-4deg);
   text-transform: uppercase;
 }
 
 .stamp.blue {
-  border-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--teal);
+  color: var(--teal);
 }
 
 .order-sheet {
   border: 3px solid var(--ink);
   background:
-    repeating-linear-gradient(0deg, transparent 0, transparent 33px, rgba(20, 60, 115, 0.18) 34px),
-    var(--paper-warm);
-  box-shadow: 7px 7px 0 rgba(20, 60, 115, 0.2);
+    repeating-linear-gradient(0deg, transparent 0, transparent 33px, rgba(26, 54, 93, 0.11) 34px),
+    var(--card);
+  box-shadow: 7px 7px 0 var(--shadow);
   padding: 1rem;
 }
 
@@ -534,16 +569,17 @@ h1, h2, h3, h4, p, li, label, span, div {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.75rem;
-  border-bottom: 3px double var(--ink);
+  border-bottom: 3px double var(--navy);
   color: var(--ink);
   padding-bottom: 0.55rem;
 }
 
 .order-title {
+  color: var(--navy);
   font-family: var(--display-font);
-  font-size: 1.5rem;
+  font-size: 1.42rem;
   font-weight: 900;
-  line-height: 1;
+  line-height: 1.05;
   text-transform: uppercase;
 }
 
@@ -551,7 +587,7 @@ h1, h2, h3, h4, p, li, label, span, div {
   width: 100%;
   border-collapse: collapse;
   margin-top: 0.65rem;
-  color: #1d1711;
+  color: var(--ink);
   font-size: 0.9rem;
 }
 
@@ -566,7 +602,7 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .order-sheet td {
   padding: 0.35rem;
-  border-bottom: 1px solid rgba(20, 60, 115, 0.22);
+  border-bottom: 1px solid rgba(28, 26, 23, 0.22);
   vertical-align: top;
 }
 
@@ -579,16 +615,16 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .order-cell {
   min-height: 34px;
-  border-bottom: 1px solid rgba(20, 60, 115, 0.24);
+  border-bottom: 1px solid rgba(28, 26, 23, 0.24);
   padding: 0.35rem;
-  color: #1d1711;
-  font-size: 0.88rem;
+  color: var(--ink);
+  font-size: 0.9rem;
 }
 
 .order-head-cell {
   color: var(--ink);
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   border-bottom: 2px solid var(--ink);
 }
@@ -603,54 +639,55 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .spike {
-  color: var(--red);
-  font-weight: 700;
+  color: var(--orange);
+  font-weight: 800;
 }
 
 .total-row {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  border-top: 3px double var(--ink);
+  border-top: 3px double var(--navy);
   margin-top: 0.75rem;
   padding-top: 0.55rem;
-  color: var(--ink);
+  color: var(--navy);
   font-size: 1.15rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .speed-ticket {
   border: 3px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper-warm);
-  box-shadow: 6px 6px 0 var(--red);
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: 6px 6px 0 var(--gold);
   padding: 1rem;
 }
 
 .speed-kicker {
-  color: #f6cf6d;
+  color: var(--gold);
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .speed-big {
+  color: var(--cream);
   font-family: var(--display-font);
   font-weight: 900;
-  font-size: 4.3rem;
-  line-height: 0.9;
+  font-size: 4rem;
+  line-height: 0.95;
 }
 
 .speed-note {
-  color: rgba(255, 248, 232, 0.86);
+  color: rgba(245, 242, 235, 0.86);
   font-size: 0.9rem;
   line-height: 1.38;
 }
 
 .footer-line {
   margin-top: 1.5rem;
-  border-top: 3px double var(--ink);
+  border-top: 3px double var(--navy);
   color: var(--ink-soft);
   font-size: 0.72rem;
   font-weight: 500;
@@ -660,7 +697,7 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .footer-line strong {
-  color: var(--ink);
+  color: var(--orange);
   font-size: var(--action-font-size);
   font-weight: 900;
   line-height: 1.12;
@@ -670,8 +707,8 @@ h1, h2, h3, h4, p, li, label, span, div {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   border: 3px solid var(--ink);
-  background: rgba(255, 248, 232, 0.84);
-  box-shadow: 6px 6px 0 rgba(20, 60, 115, 0.22);
+  background: var(--card);
+  box-shadow: 6px 6px 0 var(--shadow);
   margin: 0.2rem 0 0.9rem;
 }
 
@@ -686,24 +723,24 @@ h1, h2, h3, h4, p, li, label, span, div {
 }
 
 .pipe-n {
-  color: var(--red);
+  color: var(--orange);
   font-size: 0.62rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
 }
 
 .pipe-t {
-  color: var(--ink);
+  color: var(--navy);
   font-size: 0.86rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   line-height: 1.12;
   margin-top: 0.12rem;
 }
 
 .pipe-d {
-  color: var(--steel-dark);
-  font-size: 0.7rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
   margin-top: 0.18rem;
 }
 
@@ -713,9 +750,9 @@ h1, h2, h3, h4, p, li, label, span, div {
   top: 50%;
   transform: translateY(-50%);
   z-index: 3;
-  color: var(--red);
-  font-weight: 700;
-  background: var(--paper-warm);
+  color: var(--orange);
+  font-weight: 800;
+  background: var(--card);
   border: 2px solid var(--ink);
   width: 18px;
   height: 18px;
@@ -733,29 +770,29 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 .proof-stat {
   border: 2px solid var(--ink);
-  background: var(--paper-warm);
-  box-shadow: 4px 4px 0 rgba(20, 60, 115, 0.2);
+  background: var(--card);
+  box-shadow: 4px 4px 0 var(--shadow);
   padding: 0.6rem 0.72rem;
 }
 
 .ps-n {
-  color: var(--ink);
+  color: var(--navy);
   font-family: var(--display-font);
   font-weight: 900;
-  font-size: 1.75rem;
-  line-height: 0.96;
+  font-size: 1.62rem;
+  line-height: 1;
 }
 
 .ps-l {
-  color: var(--red);
+  color: var(--orange);
   font-size: 0.66rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   margin-top: 0.22rem;
 }
 
 .ps-d {
-  color: var(--steel-dark);
+  color: var(--ink-soft);
   font-size: 0.74rem;
   margin-top: 0.08rem;
 }
@@ -763,39 +800,40 @@ h1, h2, h3, h4, p, li, label, span, div {
 .buy-rank {
   display: inline-block;
   min-width: 1.1rem;
-  color: var(--ink);
-  font-weight: 700;
+  color: var(--navy);
+  font-weight: 800;
   margin-right: 0.35rem;
 }
 
 .quote-bucket {
-  border: 2px dashed var(--red-dark);
-  background: #ffe1d5;
-  color: #30130e;
+  border: 2px dashed var(--danger);
+  background: rgba(198, 40, 40, 0.1);
+  color: var(--ink);
   padding: 0.5rem 0.65rem;
   margin-top: 0.6rem;
   font-size: 0.85rem;
 }
 
 .quote-bucket b {
-  color: var(--red-dark);
+  color: var(--danger);
   text-transform: uppercase;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .stButton > button,
 .stDownloadButton > button {
   min-height: 42px;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--navy);
   border-radius: 0;
-  background: var(--red);
-  color: var(--paper-warm);
+  background: var(--orange);
+  color: var(--cream);
+  font-family: var(--body-font);
   font-size: var(--action-font-size);
-  font-weight: 900;
+  font-weight: 800;
   line-height: 1.12;
   text-transform: uppercase;
-  box-shadow: 4px 4px 0 var(--ink);
+  box-shadow: 4px 4px 0 var(--navy);
 }
 
 .stButton > button *,
@@ -804,23 +842,36 @@ h1, h2, h3, h4, p, li, label, span, div {
 [data-testid="stBaseButton-secondary"] * {
   color: inherit !important;
   font-size: var(--action-font-size) !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
   line-height: 1.12 !important;
   text-transform: uppercase !important;
 }
 
 .stButton > button:hover,
 .stDownloadButton > button:hover {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper-warm);
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--cream);
+}
+
+[data-testid="stExpander"] details {
+  border: 2px solid var(--ink);
+  background: var(--card);
+  box-shadow: 3px 3px 0 var(--shadow);
+  border-radius: 0;
+}
+
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary * {
+  color: var(--navy) !important;
+  font-weight: 800 !important;
 }
 
 [data-testid="stSidebar"] {
   background:
-    repeating-linear-gradient(0deg, rgba(20, 60, 115, 0.1) 0 1px, transparent 1px 36px),
-    var(--paper-deep);
-  border-right: 3px solid var(--ink);
+    repeating-linear-gradient(0deg, rgba(26, 54, 93, 0.07) 0 1px, transparent 1px 36px),
+    linear-gradient(180deg, var(--khaki), var(--card));
+  border-right: 3px solid var(--navy);
   min-width: min(23rem, 92vw) !important;
   width: min(23rem, 92vw) !important;
   transform: translateX(0) !important;
@@ -843,11 +894,11 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 [data-testid="stSidebar"] .station-rack,
 [data-testid="stSidebar"] .station-rack .rack-title {
-  color: var(--paper-warm) !important;
+  color: var(--cream) !important;
 }
 
 [data-testid="stSidebar"] .station-rack .rack-card {
-  color: #1d1711 !important;
+  color: var(--ink) !important;
 }
 
 [data-testid="stSidebar"] .status-stack,
@@ -857,42 +908,42 @@ h1, h2, h3, h4, p, li, label, span, div {
 
 [data-testid="stSidebar"] .stCaption p,
 [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
-  color: rgba(20, 60, 115, 0.88) !important;
-  font-size: 0.72rem;
+  color: rgba(28, 26, 23, 0.8) !important;
+  font-size: 0.74rem;
   font-weight: 500;
   line-height: 1.35;
 }
 
 [data-testid="stSidebar"] .stDataFrame,
 [data-testid="stSidebar"] [data-testid="stDataEditor"] {
-  border: 2px solid var(--steel-dark);
+  border: 2px solid var(--navy);
 }
 
 [data-testid="stSidebar"] [data-testid="stExpander"] details {
-  border: 2px solid var(--ink);
-  background: rgba(238, 233, 218, 0.9);
-  box-shadow: 3px 3px 0 rgba(20, 60, 115, 0.22);
+  border: 2px solid var(--navy);
+  background: var(--paper);
+  box-shadow: 3px 3px 0 rgba(26, 54, 93, 0.24);
 }
 
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-  background: var(--red);
-  color: var(--paper-warm) !important;
+  background: var(--navy);
+  color: var(--cream) !important;
   font-size: var(--action-font-size);
-  font-weight: 900;
+  font-weight: 800;
   line-height: 1.12;
   text-transform: uppercase;
 }
 
 [data-testid="stSidebar"] [data-testid="stExpander"] summary * {
-  color: var(--paper-warm) !important;
+  color: var(--cream) !important;
   font-size: var(--action-font-size) !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
   line-height: 1.12 !important;
 }
 
 @media (max-width: 900px) {
   .brand-name {
-    font-size: 3.5rem;
+    font-size: 3.4rem;
   }
   .check-meta,
   .service-grid,
@@ -913,7 +964,7 @@ h1, h2, h3, h4, p, li, label, span, div {
   }
   .can-sketch {
     border-left: 0;
-    border-top: 3px solid var(--ink);
+    border-top: 3px solid var(--navy);
     padding-left: 0;
     padding-top: 1rem;
   }
@@ -927,13 +978,16 @@ h1, h2, h3, h4, p, li, label, span, div {
   .pipe-arrow {
     display: none;
   }
+  .order-grid {
+    grid-template-columns: minmax(120px, 1.15fr) 72px 80px minmax(140px, 1fr) 82px;
+    overflow-x: auto;
+  }
   [data-testid="stSidebar"] {
     min-width: 0;
   }
 }
 </style>
 """
-
 
 def md(html_text: str) -> None:
     st.markdown(html_text, unsafe_allow_html=True)
@@ -974,7 +1028,7 @@ def service_header(bq_ready: bool, gemini_ready: bool) -> None:
             </div>
             <div class="meta-box">
               <div class="meta-label">Service</div>
-              <div class="meta-value">{esc(today)}</div>
+              <div class="meta-value mono">{esc(today)}</div>
             </div>
           </div>
           <div class="service-grid">
@@ -1101,7 +1155,8 @@ def render_sidebar(bq_ready: bool, gemini_ready: bool) -> pd.DataFrame:
         section("S", "service status")
         md(
             '<div class="status-stack">'
-            + status_dot(bq_ready, "BigQuery / RecipeNLG")
+            + status_dot(bq_ready, "BigQuery / RecipeNLG 2.23M")
+            + status_dot(True, f"cuDF GPU scoring / {sc.SPEEDUP}x proven")
             + status_dot(gemini_ready, "Gemini negotiation")
             + "</div>"
         )
@@ -1153,6 +1208,25 @@ def render_waiting_state() -> None:
         </div>
         """
     )
+
+
+def render_decision_strip(res: dict) -> None:
+    po = res["po"]
+    n_specials = len(res["chosen"])
+    n_buy = len(po["lines"])
+    bought = {line["ingredient"] for line in po["lines"]}
+    held = [k for k in po["spike_watch"] if k not in bought]
+    parts = [f"{n_specials} specials fired"]
+    parts.append(f"buy {n_buy} items / est. INR {po['total_inr']:,}" if n_buy
+                 else "nothing to buy, walk-in covers it")
+    if held:
+        parts.append(f"{', '.join(held)} spike held in the walk-in")
+    total_s = res.get("timings", {}).get("total_s")
+    if total_s is not None:
+        parts.append(f"decided in {total_s:.1f}s")
+    body = " &middot; ".join(parts)
+    md(f'<div class="decision-strip"><span class="ds-k">The call</span>'
+       f'<span class="ds-b">{body}</span></div>')
 
 
 def render_spike_alert(po: dict) -> None:
@@ -1371,7 +1445,7 @@ def render_acceleration() -> None:
 def render_service(edited_inventory) -> None:
     section("01", "set the board")
     curated = st.toggle(
-        "Curated demo mode: clean, chef-friendly dishes (uncheck to run live BigQuery over 2.23M recipes)",
+        "Curated demo dishes (off = live BigQuery over 2.23M recipes)",
         value=True,
     )
     if st.button("Fire today's specials", type="primary"):
@@ -1386,7 +1460,8 @@ def render_service(edited_inventory) -> None:
         md('<div class="footer-line"><strong>Every second counts</strong></div>')
         return
 
-    st.caption(f"Recipe candidates from: {result['menu_source']}")
+    st.caption(f"Recipe candidates from: {result['menu_source']} / prices: {getattr(sc, "PRICE_SOURCE", "built-in daily snapshot")}")
+    render_decision_strip(result)
     render_spike_alert(result["po"])
 
     section("02", "specials on the rail")
@@ -1410,8 +1485,3 @@ render_how_it_works()
 edited_inventory = render_sidebar(bq_ready, gemini_ready)
 
 render_service(edited_inventory)
-
-
-
-
-

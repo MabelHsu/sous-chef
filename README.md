@@ -58,8 +58,15 @@ Coordinator brokers a menu that survives every constraint.
   pandas (0.53s vs 8.71s on a T4), so a menu recompute is interactive rather than
   an overnight batch.
 - Gemini -- the reasoning layer: negotiates the specials and explains the
-  trade-offs.
-- Cloud Storage + Cloud Run -- dataset/price cache and the public deployment.
+  trade-offs (structured PICKS output, deterministic margin-aware fallback).
+- Cloud Storage -- optional live price feed: point SOUS_PRICES_URI at a
+  gs://bucket/prices.json object and today's mandi prices are merged over the
+  built-in snapshot at startup -- swap the price feed without redeploying.
+- Cloud Run -- the public deployment (Dockerfile included, non-root, $PORT).
+
+Acceleration is measured, not asserted: `benchmark.py` reproduces the scoring
+scan at 2.23M-row scale so anyone can rerun pandas vs `python -m cudf.pandas`.
+The app also reports wall-clock time-to-decision on every run.
 
 ## Run locally (no GCP or keys needed -- uses demo data)
 
@@ -74,6 +81,20 @@ Open http://localhost:8501, edit the walk-in stock, and click
     export SOUS_PROJECT_ID=your-gcp-project   # BigQuery with the sous.recipes table
     export GEMINI_API_KEY=your-key            # enables the live head-chef negotiation
     export GEMINI_MODEL=gemini-3.1-flash-lite
+    export SOUS_PRICES_URI=gs://your-bucket/prices.json   # optional live price feed
+
+BigQuery queries are parameterized (stock names never touch the SQL string) and
+capped with maximum_bytes_billed, so a typo in the walk-in can't run up a bill.
+
+## Tests
+
+    pip install pytest
+    pytest -q
+
+Eleven fast, offline tests cover the core invariants: staple filtering, unit
+conversion, margin-aware selection, the machine-readable Gemini picks, and the
+spike-held purchase-order behaviour. CI runs them on every push
+(.github/workflows/ci.yml).
 
 ## Deploy to Cloud Run
 
@@ -94,5 +115,8 @@ BigQuery Job User and BigQuery Data Viewer roles.
 
     app.py            Streamlit interface
     sous_core.py      the pipeline (agents, negotiation, purchase order), importable
-    Dockerfile        Cloud Run container
+    benchmark.py      reproducible pandas-vs-cuDF scoring benchmark
+    tests/            offline invariant tests (pytest)
+    static/           optional Streetwear.otf drop-in for the display font
+    Dockerfile        Cloud Run container (non-root)
     requirements.txt

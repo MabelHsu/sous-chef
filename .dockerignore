@@ -3,6 +3,11 @@ __pycache__/
 *.ipynb_checkpoints
 Sous_Complete_Build.ipynb
 *.md
+*.pptx
 .git/
+.github/
 .venv/
+.agents/
+tests/
+benchmark.py
 RecipeNLG_dataset.csv

@@ -9,7 +9,12 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY .streamlit/ ./.streamlit/
+COPY static/ ./static/
 COPY sous_core.py app.py ./
+
+# Run as a non-root user (Cloud Run best practice).
+RUN useradd --create-home sous && chown -R sous /app
+USER sous
 
 # Cloud Run provides $PORT (default 8080). Streamlit must bind to it, headless.
 ENV PORT=8080
