@@ -1,7 +1,8 @@
 streamlit>=1.49,<2
 pandas>=2.0,<3
 requests>=2.31,<3
-google-cloud-bigquery>=3.20,<4
+google-cloud-bigquery>=3.20
+google-auth>=2.28,<4
 google-cloud-storage>=2.18
 db-dtypes>=1.2,<2
 pyarrow>=15.0

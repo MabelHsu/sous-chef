@@ -4,15 +4,18 @@ packaged so the Streamlit app (app.py) and any script can reuse it.
 
 Design rules carried over from the build:
   - Compute first, let the LLM only narrate (deterministic math, grounded words).
-  - Graceful degradation: no BigQuery / no Gemini key -> demo data + skip narration.
-  - All Gemini calls go via REST (requests.post), NOT the google-genai SDK, to avoid
-    the Colab 'Cannot send a request, as the client has been closed' httpx bug.
+  - Graceful degradation: no BigQuery / no Vertex access -> demo data + skip narration.
+  - Gemini runs on Vertex AI, authenticated by the runtime service account (no API
+    key). Calls go via REST (requests.post), NOT the google-genai SDK, to avoid the
+    Colab 'Cannot send a request, as the client has been closed' httpx bug.
 
 Config via environment variables:
-  SOUS_PROJECT_ID  (BigQuery project; default 'sous-500915')
+  SOUS_PROJECT_ID  (Google Cloud project for BigQuery + Vertex AI; default 'sous-500915')
   SOUS_DATASET     (default 'sous')
-  GEMINI_API_KEY   (optional; enables the head-chef negotiation narrative)
-  GEMINI_MODEL     (default 'gemini-3.1-flash-lite')
+  GEMINI_MODEL     (Gemini model id; default 'gemini-3.1-flash-lite')
+  VERTEX_PROJECT   (project for the Vertex AI call; default = SOUS_PROJECT_ID)
+  VERTEX_LOCATION  (Vertex region, or 'global' for the global endpoint; default 'global')
+  GEMINI_API_KEY   (optional fallback; uses the AI Studio key path instead of Vertex)
   SOUS_PRICES_URI  (optional; gs://bucket/prices.json or https URL with today's
                     {ingredient: INR/kg} - merged over the built-in snapshot, so
                     the price feed can be swapped without redeploying)
@@ -25,6 +28,11 @@ from collections import defaultdict
 PROJECT_ID = os.environ.get("SOUS_PROJECT_ID", "sous-500915")
 DATASET = os.environ.get("SOUS_DATASET", "sous")
 RECIPES_TABLE = f"{PROJECT_ID}.{DATASET}.recipes"
+
+# Gemini via Vertex AI (auth = runtime service account; no API key on Cloud Run).
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+VERTEX_PROJECT = os.environ.get("VERTEX_PROJECT", PROJECT_ID)
+VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
 
 # Acceleration evidence (measured on a Colab T4 over 2.23M RecipeNLG recipes).
 PANDAS_SECS, CUDF_SECS = 8.71, 0.53
@@ -159,23 +167,72 @@ def bq_read(client, sql, job_config=None):
     return client.query(sql, job_config=job_config).to_arrow().to_pandas()
 
 
-def gemini_text(prompt):
-    """Gemini via REST (requests.post) - no SDK client lifecycle to break.
-    Returns text, or None if no key / call fails."""
-    key = (os.environ.get("GEMINI_API_KEY") or "").strip()
-    if not key:
-        return None
-    model = (os.environ.get("GEMINI_MODEL") or "gemini-3.1-flash-lite").strip()
-    import requests
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+_VERTEX_CREDS = None
+
+
+def _adc_token():
+    """OAuth token for the runtime service account (Application Default
+    Credentials). Automatic on Cloud Run; locally run
+    `gcloud auth application-default login`. Returns None if unavailable."""
+    global _VERTEX_CREDS
     try:
-        r = requests.post(url, params={"key": key}, timeout=60,
-                          json={"contents": [{"parts": [{"text": prompt}]}]})
-        r.raise_for_status()
-        return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        print(f"[gemini] REST call failed ({type(e).__name__}: {e})")
+        import google.auth
+        import google.auth.transport.requests
+        if _VERTEX_CREDS is None:
+            _VERTEX_CREDS, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        if not _VERTEX_CREDS.valid:
+            _VERTEX_CREDS.refresh(google.auth.transport.requests.Request())
+        return _VERTEX_CREDS.token
+    except Exception:
         return None
+
+
+def gemini_ready():
+    """True if a Gemini backend is reachable: Vertex AI (service account + project)
+    or, as a fallback, an AI Studio API key. Lights the UI status dot."""
+    if (os.environ.get("GEMINI_API_KEY") or "").strip():
+        return True
+    return bool(VERTEX_PROJECT) and _adc_token() is not None
+
+
+def gemini_text(prompt):
+    """Gemini narration. Primary path = Vertex AI, authenticated by the runtime
+    service account (no API key to manage). Falls back to the AI Studio key path
+    only if GEMINI_API_KEY is set. Returns text, or None if unavailable / fails.
+    Calls go via REST (requests.post), not the google-genai SDK, to dodge the
+    'client has been closed' httpx bug seen in Colab."""
+    import requests
+    model = GEMINI_MODEL.strip()
+    body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
+
+    # Primary: Vertex AI via ADC -- the Google Cloud native path, no key.
+    token = _adc_token() if VERTEX_PROJECT else None
+    if token:
+        loc = VERTEX_LOCATION
+        # 'global' uses aiplatform.googleapis.com (no region prefix); widest availability.
+        host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+        url = (f"https://{host}/v1/projects/{VERTEX_PROJECT}"
+               f"/locations/{loc}/publishers/google/models/{model}:generateContent")
+        try:
+            r = requests.post(url, timeout=60,
+                              headers={"Authorization": f"Bearer {token}"}, json=body)
+            r.raise_for_status()
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            print(f"[gemini] Vertex call failed ({type(e).__name__}: {e})")
+
+    # Fallback: AI Studio API key (handy for a quick local run without ADC).
+    key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if key:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        try:
+            r = requests.post(url, params={"key": key}, timeout=60, json=body)
+            r.raise_for_status()
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as e:
+            print(f"[gemini] AI Studio call failed ({type(e).__name__}: {e})")
+    return None
 
 
 def _parse_ingredients(ner_str):

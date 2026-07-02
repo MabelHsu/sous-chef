@@ -1,0 +1,25 @@
+# What NOT to upload to Cloud Build (independent of .gitignore).
+# Runtime files (app.py, sous_core.py, requirements.txt, .streamlit/, static/)
+# are intentionally NOT listed here, so they always upload.
+.git/
+.gitignore
+.gcloudignore
+.venv/
+__pycache__/
+*.pyc
+.agents/
+
+# Hackathon / learning extras -- not needed to run the app
+Sous_Complete_Build.ipynb
+sous-build-tutorial.md
+sous-project-brief.md
+sous-gtm.md
+ARCHITECTURE.md
+DEPLOY.md
+*.pptx
+
+# Local-only / secrets / generated
+.streamlit/secrets.toml
+purchase_order.csv
+purchase_order.txt
+RecipeNLG_dataset.csv

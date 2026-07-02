@@ -1372,8 +1372,8 @@ def render_reasoning(res: dict) -> None:
             st.markdown(res["coord_text"])
         else:
             st.info(
-                "Set GEMINI_API_KEY for live negotiation text. This run used deterministic ranking: "
-                "clear near-expiry stock first, then maximize stock match."
+                "Live negotiation runs on Vertex AI (Gemini). This run used deterministic "
+                "ranking: clear near-expiry stock first, then maximize stock match."
             )
 
     with st.expander("Audit trail / which agent argued what"):
@@ -1446,7 +1446,7 @@ def render_service(edited_inventory) -> None:
     section("01", "set the board")
     curated = st.toggle(
         "Curated demo dishes (off = live BigQuery over 2.23M recipes)",
-        value=True,
+        value=False,
     )
     if st.button("Fire today's specials", type="primary"):
         with st.spinner("Working the rail, pricing the board, checking the walk-in..."):
@@ -1477,7 +1477,7 @@ def render_service(edited_inventory) -> None:
 
 
 bq_ready = sc.get_bq_client() is not None
-gemini_ready = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
+gemini_ready = sc.gemini_ready()
 
 md(CSS)
 service_header(bq_ready, gemini_ready)

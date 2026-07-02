@@ -46,7 +46,7 @@ Coordinator brokers a menu that survives every constraint.
     today's mandi prices  +  walk-in stock  +  recipe corpus
         -> menu agent        (what can we cook?)
         -> briefing          (cost, food-cost %, spike, expiry, diet per dish)
-        -> Coordinator       (Gemini negotiates) or margin-aware fallback
+        -> Coordinator       (Gemini on Vertex AI negotiates) or margin-aware fallback
         -> three specials    (all under the food-cost target)
         -> purchase order    (buy only the shortfall)
         -> chef approves     -> order ticket + CSV + audit trail
@@ -57,16 +57,10 @@ Coordinator brokers a menu that survives every constraint.
 - cuDF / NVIDIA RAPIDS -- GPU-accelerated scoring, measured 16.3x faster than
   pandas (0.53s vs 8.71s on a T4), so a menu recompute is interactive rather than
   an overnight batch.
-- Gemini -- the reasoning layer: negotiates the specials and explains the
-  trade-offs (structured PICKS output, deterministic margin-aware fallback).
-- Cloud Storage -- optional live price feed: point SOUS_PRICES_URI at a
-  gs://bucket/prices.json object and today's mandi prices are merged over the
-  built-in snapshot at startup -- swap the price feed without redeploying.
-- Cloud Run -- the public deployment (Dockerfile included, non-root, $PORT).
-
-Acceleration is measured, not asserted: `benchmark.py` reproduces the scoring
-scan at 2.23M-row scale so anyone can rerun pandas vs `python -m cudf.pandas`.
-The app also reports wall-clock time-to-decision on every run.
+- Vertex AI (Gemini) -- the reasoning layer: negotiates the specials and explains
+  the trade-offs. On Cloud Run it authenticates through the service account, so
+  there is no API key to manage.
+- Cloud Storage + Cloud Run -- dataset/price cache and the public deployment.
 
 ## Run locally (no GCP or keys needed -- uses demo data)
 
@@ -78,31 +72,22 @@ Open http://localhost:8501, edit the walk-in stock, and click
 
 ### Optional: connect the real services
 
-    export SOUS_PROJECT_ID=your-gcp-project   # BigQuery with the sous.recipes table
-    export GEMINI_API_KEY=your-key            # enables the live head-chef negotiation
+    export SOUS_PROJECT_ID=your-gcp-project   # BigQuery + Vertex AI project
+    export VERTEX_LOCATION=global        # Vertex region that serves the model
     export GEMINI_MODEL=gemini-3.1-flash-lite
-    export SOUS_PRICES_URI=gs://your-bucket/prices.json   # optional live price feed
+    gcloud auth application-default login      # local ADC so Vertex works, no API key
 
-BigQuery queries are parameterized (stock names never touch the SQL string) and
-capped with maximum_bytes_billed, so a typo in the walk-in can't run up a bill.
-
-## Tests
-
-    pip install pytest
-    pytest -q
-
-Eleven fast, offline tests cover the core invariants: staple filtering, unit
-conversion, margin-aware selection, the machine-readable Gemini picks, and the
-spike-held purchase-order behaviour. CI runs them on every push
-(.github/workflows/ci.yml).
+Gemini runs on Vertex AI via the service account -- no API key. (A `GEMINI_API_KEY`
+is still supported as an optional fallback for a quick local run without ADC.)
 
 ## Deploy to Cloud Run
 
     gcloud run deploy sous --source . --region asia-south1 --allow-unauthenticated \
-      --set-env-vars SOUS_PROJECT_ID=YOUR_PROJECT_ID,GEMINI_MODEL=gemini-3.1-flash-lite
+      --set-env-vars SOUS_PROJECT_ID=YOUR_PROJECT_ID,GEMINI_MODEL=gemini-3.1-flash-lite,VERTEX_LOCATION=global
 
 The command prints the public Service URL. The Cloud Run service account needs the
-BigQuery Job User and BigQuery Data Viewer roles.
+BigQuery Job User, BigQuery Data Viewer, and Vertex AI User (roles/aiplatform.user)
+roles. See DEPLOY.md for the full step-by-step.
 
 ## Honest limitations
 
@@ -115,8 +100,5 @@ BigQuery Job User and BigQuery Data Viewer roles.
 
     app.py            Streamlit interface
     sous_core.py      the pipeline (agents, negotiation, purchase order), importable
-    benchmark.py      reproducible pandas-vs-cuDF scoring benchmark
-    tests/            offline invariant tests (pytest)
-    static/           optional Streetwear.otf drop-in for the display font
-    Dockerfile        Cloud Run container (non-root)
+    Dockerfile        Cloud Run container
     requirements.txt
