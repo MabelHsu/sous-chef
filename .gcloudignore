@@ -1,6 +1,3 @@
-# What NOT to upload to Cloud Build (independent of .gitignore).
-# Runtime files (app.py, sous_core.py, requirements.txt, .streamlit/, static/)
-# are intentionally NOT listed here, so they always upload.
 .git/
 .gitignore
 .gcloudignore

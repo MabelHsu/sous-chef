@@ -22,8 +22,9 @@ Thumbs.db
 # Agent / session scratch
 .agents/
 
-# Personal build journey
+# Personal build journey (kept local, not for the public repo)
 Sous_Complete_Build.ipynb
+sous-build-tutorial.md
 
 # Internal working docs (folded into the README instead)
 sous-project-brief.md
@@ -33,7 +34,9 @@ ARCHITECTURE.md
 # Submission artifacts (submitted separately)
 *.pptx
 
-# Submission form text (submitted separately)
-submission-description.md
+# Private -- operational notes, SOP, and submission-form text (kept local)
+DEPLOY.md
 deploy-cloudrun.md
+submission-description.md
 video-script.md
+private/
