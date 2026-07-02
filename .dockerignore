@@ -11,3 +11,4 @@ Sous_Complete_Build.ipynb
 tests/
 benchmark.py
 RecipeNLG_dataset.csv
+conftest.py
