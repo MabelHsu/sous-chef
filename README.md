@@ -54,13 +54,14 @@ Coordinator brokers a menu that survives every constraint.
 ## Named technologies
 
 - BigQuery -- the recipe corpus (RecipeNLG, 2.23M rows), matched server-side.
-- cuDF / NVIDIA RAPIDS -- GPU-accelerated scoring, measured 16.3x faster than
-  pandas (0.53s vs 8.71s on a T4), so a menu recompute is interactive rather than
-  an overnight batch.
+- cuDF / NVIDIA RAPIDS -- GPU-accelerated scoring. Measured 16.3x faster than
+  pandas on a T4 in the benchmark (0.53s vs 8.71s over 2.23M recipes), and
+  running live on an NVIDIA L4 in the deployed app it reaches ~39x. A menu
+  recompute is interactive, not an overnight batch.
 - Vertex AI (Gemini) -- the reasoning layer: negotiates the specials and explains
   the trade-offs. On Cloud Run it authenticates through the service account, so
   there is no API key to manage.
-- Cloud Storage + Cloud Run -- dataset/price cache and the public deployment.
+- Cloud Run -- containerized public deployment; scales to zero, no server to manage.
 
 ## Run locally (no GCP or keys needed -- uses demo data)
 

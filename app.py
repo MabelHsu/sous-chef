@@ -1391,7 +1391,7 @@ def render_how_it_works() -> None:
         render_brief_strip()
         st.caption(
             f"Acceleration: pandas {sc.PANDAS_SECS}s -> cuDF {sc.CUDF_SECS}s over 2.23M recipes "
-            f"({sc.SPEEDUP}x on a T4 GPU)."
+            f"({sc.SPEEDUP}x - {sc.ACCEL_SOURCE})."
         )
         st.bar_chart(
             pd.DataFrame({"seconds": [sc.PANDAS_SECS, sc.CUDF_SECS]}, index=["pandas CPU", "cuDF GPU"])
@@ -1460,7 +1460,7 @@ def render_service(edited_inventory) -> None:
         md('<div class="footer-line"><strong>Every second counts</strong></div>')
         return
 
-    st.caption(f"Recipe candidates from: {result['menu_source']} / prices: {getattr(sc, "PRICE_SOURCE", "built-in daily snapshot")}")
+    st.caption(f"Recipe candidates from: {result['menu_source']} / prices: {getattr(sc, 'PRICE_SOURCE', 'built-in daily snapshot')}")
     render_decision_strip(result)
     render_spike_alert(result["po"])
 

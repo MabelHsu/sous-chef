@@ -37,6 +37,7 @@ VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
 # Acceleration evidence (measured on a Colab T4 over 2.23M RecipeNLG recipes).
 PANDAS_SECS, CUDF_SECS = 8.71, 0.53
 SPEEDUP = 16.3        # measured headline (matches the notebook benchmark)
+ACCEL_SOURCE = "measured on a Colab T4 (benchmark in the repo)"
 
 # Demo assumptions (explicit; RecipeNLG has no quantities so cost is an indicator).
 PLANNED_COVERS, PORTION_KG = 20, 0.15
@@ -546,3 +547,46 @@ if __name__ == "__main__":
           "| needs quote:", len(r["po"]["unpriced"]))
     print("spike watch:", r["po"]["spike_watch"])
     print("coordinator:", "Gemini negotiated" if r["coord_text"] else "no key (deterministic top-3)")
+
+
+# ---------------------------------------------------------------------------
+# Live NVIDIA GPU acceleration (Cloud Run GPU / NVIDIA L4).
+# When SOUS_USE_GPU=1 and cuDF + a GPU are present, score the recipe corpus on
+# the GPU and publish the REAL measured numbers; otherwise keep the Colab-T4
+# benchmark constants above. Guarded so the CPU deploy is unaffected.
+# ---------------------------------------------------------------------------
+def _gpu_score_benchmark():
+    if os.environ.get("SOUS_USE_GPU") != "1":
+        return None
+    try:
+        import time
+        import cudf
+        client = get_bq_client()
+        if client is None:
+            return None
+        n = int(os.environ.get("SOUS_GPU_ROWS", "2000000"))
+        df = bq_read(client, f"SELECT NER FROM `{RECIPES_TABLE}` LIMIT {n}")
+        toks = ["tomato", "onion", "paneer", "potato", "chicken"]
+        # CPU (pandas) scan
+        s_cpu = df["NER"].astype(str).str.lower()
+        t0 = time.time()
+        _ = sum(s_cpu.str.contains(tok, regex=False).astype("int8") for tok in toks)
+        cpu = time.time() - t0
+        # GPU (cuDF) scan -- warm up first so timing is compute, not JIT
+        g = cudf.from_pandas(df)["NER"].astype(str).str.lower()
+        _ = sum(g.str.contains(tok).astype("int8") for tok in toks)
+        t0 = time.time()
+        _ = sum(g.str.contains(tok).astype("int8") for tok in toks)
+        gpu = time.time() - t0
+        print(f"[gpu] live cuDF scan over {len(df)} rows: pandas {cpu:.2f}s -> cuDF {gpu:.2f}s")
+        return round(cpu, 2), round(gpu, 2)
+    except Exception as e:
+        print(f"[gpu] cuDF benchmark skipped ({type(e).__name__}: {e})")
+        return None
+
+
+_GPU = _gpu_score_benchmark()
+if _GPU and _GPU[1] > 0:
+    PANDAS_SECS, CUDF_SECS = _GPU
+    SPEEDUP = round(PANDAS_SECS / CUDF_SECS, 1)
+    ACCEL_SOURCE = "measured live on an NVIDIA L4 (Cloud Run GPU)"
