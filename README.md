@@ -10,7 +10,7 @@ tool that shows GPU acceleration helps, using named Google Cloud + NVIDIA techs)
 
 **Phase 1 baseline:** [`90a1db6`](https://github.com/MabelHsu/sous-chef/commit/90a1db6d89b49223426d732028159eb75f169795)
 
-## Phase 2
+## Phase 2 Refinement
 
 Phase 2 keeps Phase 1's deterministic margin core and adds:
 
