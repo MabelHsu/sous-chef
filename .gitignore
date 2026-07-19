@@ -4,6 +4,11 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Secrets / environment
 .env
@@ -14,26 +19,37 @@ venv/
 purchase_order.csv
 purchase_order.txt
 RecipeNLG_dataset.csv
+drafts/
+prices/
+trace*.json
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Agent / session scratch
+# Editors, AI tools, and session scratch
 .agents/
+.claude/
+.codex/
+.gemini/
+.idea/
+.vscode/
+*.tmp
+*.bak
 
-# Personal build journey
-Sous_Complete_Build.ipynb
+# Personal notebooks and presentation assets
+*.ipynb
+.ipynb_checkpoints/
+*.pptx
 
-# Internal working docs
+# Internal working docs & personal learning notes
+docs/
 sous-project-brief.md
 sous-gtm.md
 ARCHITECTURE.md
 
-# Submission artifacts (submitted separately)
-*.pptx
-
-# Private -- operational notes
+# Operational notes
 DEPLOY.md
 deploy-cloudrun.md
 submission-description.md

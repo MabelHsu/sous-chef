@@ -11,5 +11,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pytest
-      - run: python -m pytest -q
-      - run: python -m py_compile app.py sous_core.py
+      # UI (AppTest) tests run locally; CI runs the fast deterministic suite
+      - run: python -m pytest -q -k "not app_ui"
+      - run: python -m py_compile app.py sous_core.py forecast.py agents/*.py scripts/*.py

@@ -23,11 +23,40 @@ Config via environment variables:
 import os
 import ast
 import json
+import re
+import threading
 from collections import defaultdict
+
+
+def _load_dotenv():
+    """Tiny .env loader (zero dependencies): KEY=VALUE lines, # comments.
+    Real environment variables always win, so Cloud Run --set-env-vars and
+    PowerShell $env: overrides behave exactly as before. The .env file is
+    dev-only: .dockerignore/.gcloudignore keep it out of every deploy."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"[env] .env load skipped ({type(e).__name__}: {e})")
+
+
+_load_dotenv()
 
 PROJECT_ID = os.environ.get("SOUS_PROJECT_ID", "sous-500915")
 DATASET = os.environ.get("SOUS_DATASET", "sous")
 RECIPES_TABLE = f"{PROJECT_ID}.{DATASET}.recipes"
+RECIPE_DETAILS_TABLE = os.environ.get(
+    "SOUS_RECIPE_DETAILS_TABLE", f"{PROJECT_ID}.{DATASET}.recipe_details")
 
 # Gemini via Vertex AI (auth = runtime service account; no API key on Cloud Run).
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
@@ -74,6 +103,69 @@ DEMO_DISHES = [
      "need": ["capsicum", "oil"], "uses_expiring": ["paneer"]},
 ]
 
+# Curated reference recipe cards for the demo dishes (original text, home
+# scale ~4 servings). Live mode pulls ingredients/directions from RecipeNLG
+# in BigQuery; these guarantee the recorded demo always has full cards.
+DEMO_RECIPES = {
+    "Dhansak": {
+        "ingredients": ["1 cup red lentils, rinsed", "1 large onion, sliced",
+                        "2 tomatoes, chopped", "1 small brinjal, cubed",
+                        "4 cloves garlic, crushed", "1/2 cup carrot and peas",
+                        "2 tbsp dhansak masala", "salt to taste"],
+        "directions": ["Soften the onion and garlic in oil; add the masala and bloom 1 minute.",
+                       "Add lentils, brinjal, tomato and 3 cups water; simmer 25 minutes.",
+                       "Mash lightly to a thick, rustic dal; fold in carrot and peas.",
+                       "Simmer 5 more minutes, season, and finish with a squeeze of lime."],
+    },
+    "Calcutta Kathi Rolls": {
+        "ingredients": ["200 g paneer, cut in strips", "1 onion, thinly sliced",
+                        "2 green chillies, slit", "a handful of coriander leaves",
+                        "1 carrot, shredded", "4 flatbreads", "2 tbsp oil",
+                        "1 tsp chaat masala"],
+        "directions": ["Sear the paneer strips hot and fast with the chillies.",
+                       "Warm each flatbread with a thin smear of beaten egg or oil.",
+                       "Pile on paneer, raw onion, carrot and coriander; dust with chaat masala.",
+                       "Roll tight, wrap one end in paper, serve hot."],
+    },
+    "Malai Kofta": {
+        "ingredients": ["200 g paneer, crumbled", "2 potatoes, boiled and mashed",
+                        "1/2 cup cream", "8 cashews, ground", "1 onion, pureed",
+                        "2 tomatoes, pureed", "1/2 cup peas", "salt and garam masala"],
+        "directions": ["Knead paneer and potato with salt; shape into balls and shallow-fry golden.",
+                       "Cook onion puree until sweet; add tomato puree and spices, cook out 10 minutes.",
+                       "Loosen with water, add peas, then swirl in the cream off the heat.",
+                       "Rest the koftas in the sauce 2 minutes before serving."],
+    },
+    "Baingan Bharta": {
+        "ingredients": ["2 large brinjals", "1 onion, finely chopped",
+                        "2 tomatoes, chopped", "4 cloves garlic, minced",
+                        "2 green chillies, chopped", "2 tbsp oil", "salt to taste"],
+        "directions": ["Char the brinjals whole over a flame until collapsed; rest, peel and mash.",
+                       "Fry garlic, onion and chillies until golden.",
+                       "Add tomato; cook until the oil separates.",
+                       "Fold in the mashed brinjal and cook 5 minutes; season and finish with coriander."],
+    },
+    "Veg Pulao": {
+        "ingredients": ["1.5 cups basmati rice, soaked", "1 onion, sliced",
+                        "3 cloves garlic, sliced", "1/2 cup carrot and peas",
+                        "whole spices (bay, clove, cinnamon)", "2 tbsp ghee or oil",
+                        "salt to taste"],
+        "directions": ["Fry the whole spices in ghee; add onion and garlic until golden.",
+                       "Stir in the vegetables, then the drained rice for 1 minute.",
+                       "Add 2.5 cups hot water and salt; cover and cook on low 12 minutes.",
+                       "Rest 5 minutes off the heat, then fork through."],
+    },
+    "Paneer Jalfrezi": {
+        "ingredients": ["250 g paneer, in batons", "1 onion, in petals",
+                        "2 tomatoes, in wedges", "1 capsicum, in strips",
+                        "2 green chillies, slit", "1 tsp cumin", "2 tbsp oil"],
+        "directions": ["Crackle cumin in hot oil; stir-fry onion and capsicum, keeping crunch.",
+                       "Add chillies and tomato wedges; toss on high heat 2 minutes.",
+                       "Add paneer and a splash of water; coat and heat through.",
+                       "Season, finish with a flick of vinegar, serve immediately."],
+    },
+}
+
 SEASONAL_NORM_INR = {
     "tomato": 30, "onion": 28, "brinjal": 35, "potato": 25, "paneer": 320, "rice": 55,
     "garlic": 120, "green chilli": 60, "coriander": 40, "butter": 500, "cream": 300,
@@ -93,11 +185,16 @@ def _load_price_snapshot():
             bucket_name, blob_name = uri[5:].split("/", 1)
             body = (storage.Client(project=PROJECT_ID)
                     .bucket(bucket_name).blob(blob_name).download_as_text())
-        else:
+        elif uri.startswith("http://") or uri.startswith("https://"):
             import requests
             resp = requests.get(uri, timeout=10)
             resp.raise_for_status()
             body = resp.text
+        else:
+            # plain local path (Phase 2: scripts/fetch_prices.py writes
+            # prices/latest.json for keyless local runs)
+            with open(uri, encoding="utf-8") as f:
+                body = f.read()
         raw = json.loads(body)
         return {str(k).lower().strip(): float(v) for k, v in raw.items()}
     except Exception as e:
@@ -109,7 +206,9 @@ PRICES_TODAY = {k: round(v * PRICE_SPIKES.get(k, 1.0)) for k, v in SEASONAL_NORM
 _EXTERNAL_PRICES = _load_price_snapshot()
 if _EXTERNAL_PRICES:
     PRICES_TODAY.update({k: round(v) for k, v in _EXTERNAL_PRICES.items()})
-    PRICE_SOURCE = "Cloud Storage snapshot (SOUS_PRICES_URI)"
+    _uri = (os.environ.get("SOUS_PRICES_URI") or "").strip()
+    PRICE_SOURCE = ("Cloud Storage snapshot (SOUS_PRICES_URI)" if _uri.startswith("gs://")
+                    else "live Agmarknet feed (SOUS_PRICES_URI)")
 else:
     PRICE_SOURCE = "built-in daily snapshot (demo spike: tomato +40%)"
 
@@ -139,7 +238,7 @@ ALLERGENS = {"paneer": "dairy", "milk": "dairy", "butter": "dairy", "cream": "da
 PIPELINE_STEPS = [
     ("BigQuery", "recipe book, 2.23M"),
     ("Walk-in", "today's stock"),
-    ("Price spike", "mandi board"),
+    ("Price spike", "mandi board + 7d outlook"),
     ("GPU scoring", "cuDF rank"),
     ("Order ticket", "chef fires"),
 ]
@@ -197,15 +296,50 @@ def gemini_ready():
     return bool(VERTEX_PROJECT) and _adc_token() is not None
 
 
-def gemini_text(prompt):
+_GROUNDING_LOCAL = threading.local()
+
+
+def grounding_sources():
+    """Sources attached to the grounded Gemini call in this worker thread."""
+    return [dict(source) for source in getattr(_GROUNDING_LOCAL, "sources", [])]
+
+
+def _extract_grounding_sources(payload):
+    """Keep the web references instead of discarding Gemini grounding metadata."""
+    chunks = ((payload.get("candidates") or [{}])[0]
+              .get("groundingMetadata", {}).get("groundingChunks", []))
+    out = []
+    seen = set()
+    for chunk in chunks:
+        web = chunk.get("web") or {}
+        url = str(web.get("uri") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append({
+            "title": str(web.get("title") or "Recipe reference").strip(),
+            "url": url,
+        })
+    return out[:5]
+
+
+def gemini_text(prompt, use_search=False):
     """Gemini narration. Primary path = Vertex AI, authenticated by the runtime
     service account (no API key to manage). Falls back to the AI Studio key path
     only if GEMINI_API_KEY is set. Returns text, or None if unavailable / fails.
     Calls go via REST (requests.post), not the google-genai SDK, to dodge the
-    'client has been closed' httpx bug seen in Colab."""
+    'client has been closed' httpx bug seen in Colab.
+    use_search=True adds Grounding with Google Search (billed per grounded
+    request) - used only by the recipe-card web fallback."""
     import requests
+    if use_search:
+        _GROUNDING_LOCAL.sources = []
     model = GEMINI_MODEL.strip()
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
+    if use_search:
+        # Grounding with Google Search (Vertex AI Gemini). REST/proto3 JSON
+        # accepts either spelling; googleSearch is the documented Vertex form.
+        body["tools"] = [{"googleSearch": {}}]
 
     # Primary: Vertex AI via ADC -- the Google Cloud native path, no key.
     token = _adc_token() if VERTEX_PROJECT else None
@@ -219,7 +353,10 @@ def gemini_text(prompt):
             r = requests.post(url, timeout=60,
                               headers={"Authorization": f"Bearer {token}"}, json=body)
             r.raise_for_status()
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            payload = r.json()
+            if use_search:
+                _GROUNDING_LOCAL.sources = _extract_grounding_sources(payload)
+            return payload["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
             print(f"[gemini] Vertex call failed ({type(e).__name__}: {e})")
 
@@ -230,7 +367,10 @@ def gemini_text(prompt):
         try:
             r = requests.post(url, params={"key": key}, timeout=60, json=body)
             r.raise_for_status()
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            payload = r.json()
+            if use_search:
+                _GROUNDING_LOCAL.sources = _extract_grounding_sources(payload)
+            return payload["candidates"][0]["content"]["parts"][0]["text"]
         except Exception as e:
             print(f"[gemini] AI Studio call failed ({type(e).__name__}: {e})")
     return None
@@ -319,7 +459,15 @@ def menu_agent(inventory, top_k=6, force_demo=False):
         hits = " + ".join(
             f"CAST(LOWER(NER) LIKE CONCAT('%', @item_{n}, '%') AS INT64)"
             for n in range(len(safe_items)))
-        sql = f"""SELECT title, NER, ({hits}) AS stock_hits FROM `{RECIPES_TABLE}`
+        # Pull real recipe text in this SAME query, per column (some tables have
+        # `ingredients` but not `directions`), so each candidate's text travels
+        # with it - no second lookup, no title-matching seam. Schema-gated so a
+        # title+NER-only table still ranks the menu fine.
+        cols = _recipe_detail_columns(client)
+        has_ing, has_dir = "ingredients" in cols, "directions" in cols
+        detail_cols = ("" + (", ingredients" if has_ing else "")
+                       + (", directions" if has_dir else ""))
+        sql = f"""SELECT title, NER{detail_cols}, ({hits}) AS stock_hits FROM `{RECIPES_TABLE}`
                   WHERE ({hits}) >= 3 ORDER BY stock_hits DESC LIMIT 50"""
         cfg = bigquery.QueryJobConfig(
             query_parameters=[
@@ -332,8 +480,18 @@ def menu_agent(inventory, top_k=6, force_demo=False):
             ner = _parse_ingredients(r["NER"])
             have = [i for i in items if any(i in ing for ing in ner)]
             need = sorted({ing for ing in ner if not any(i in ing for i in items)})
-            dishes.append({"title": clean_title(r["title"]), "have": have, "need": need,
-                           "uses_expiring": [i for i in have if i in expiring]})
+            dish = {"title": clean_title(r["title"]), "raw_title": str(r["title"]),
+                    "have": have, "need": need,
+                    "uses_expiring": [i for i in have if i in expiring]}
+            if has_ing:
+                ings = _parse_list_display(r["ingredients"])
+                if ings:
+                    dish["_ingredients"] = ings
+            if has_dir:
+                dirs = _parse_list_display(r["directions"])
+                if dirs:
+                    dish["_directions"] = dirs
+            dishes.append(dish)
         source = "BigQuery / RecipeNLG (2.23M recipes)"
     except Exception:
         dishes = [dict(d) for d in DEMO_DISHES]
@@ -510,6 +668,265 @@ def explain_trail(chosen, brief):
     return out
 
 
+def _parse_list_display(text):
+    """RecipeNLG's ingredients/directions columns are stringified lists; parse
+    them preserving the original casing for display. Non-list text is wrapped."""
+    if hasattr(text, "tolist"):
+        text = text.tolist()
+    if isinstance(text, (list, tuple)):
+        return [str(x).strip() for x in text if str(x).strip()]
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            out = parser(text)
+            if isinstance(out, (list, tuple)):
+                return [str(x).strip() for x in out if str(x).strip()]
+        except Exception:
+            continue
+    if text is None:
+        return []
+    t = str(text).strip()
+    return [t] if t else []
+
+
+_DETAIL_COLS = None
+
+
+def _recipe_detail_columns(client):
+    """Which columns the recipes table actually has (cached). Lets the app
+    say 'your table lacks ingredients/directions' instead of failing silently."""
+    global _DETAIL_COLS
+    if _DETAIL_COLS is not None:
+        return _DETAIL_COLS
+    try:
+        sql = (f"SELECT column_name FROM `{PROJECT_ID}.{DATASET}"
+               f".INFORMATION_SCHEMA.COLUMNS` WHERE table_name = 'recipes'")
+        rows = bq_read(client, sql)
+        _DETAIL_COLS = {str(c).lower() for c in rows["column_name"].tolist()}
+    except Exception as e:
+        print(f"[recipes] schema probe failed ({type(e).__name__}: {e})")
+        _DETAIL_COLS = set()          # unknown -> we still try the query
+    return _DETAIL_COLS
+
+
+def _recipe_key(title):
+    """Stable join key shared by live candidates and the approved detail store."""
+    return re.sub(r"[^a-z0-9]+", " ", str(title).lower()).strip()
+
+
+def _approved_recipe_details(client, dishes):
+    """Read reviewed/corpus recipe text from BigQuery before any web fallback.
+
+    The table is prepared by ``scripts/prepare_recipe_details.py``. A missing
+    table is a clean cache miss: the original RecipeNLG row remains canonical
+    and Gemini Search can still enrich the card without becoming source truth.
+    """
+    if client is None or not dishes:
+        return {}
+    try:
+        from google.cloud import bigquery
+        by_key = {_recipe_key(d.get("raw_title", d["title"])): d["title"]
+                  for d in dishes}
+        keys = [key for key in by_key if key]
+        if not keys:
+            return {}
+        sql = f"""
+            SELECT recipe_key, ingredients, directions, source_name,
+                   source_url, source_urls, source_type, quality_status
+            FROM `{RECIPE_DETAILS_TABLE}`
+            WHERE recipe_key IN UNNEST(@keys)
+              AND quality_status IN ('approved', 'corpus')
+            QUALIFY ROW_NUMBER() OVER (
+              PARTITION BY recipe_key
+              ORDER BY IF(source_type = 'corpus', 0, 1), updated_at DESC
+            ) = 1
+        """
+        cfg = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ArrayQueryParameter("keys", "STRING", keys)],
+            maximum_bytes_billed=100 * 1024**2)
+        rows = bq_read(client, sql, cfg)
+        out = {}
+        for _, row in rows.iterrows():
+            title = by_key.get(str(row["recipe_key"]))
+            if not title:
+                continue
+            urls = _parse_list_display(row.get("source_urls"))
+            single_url = str(row.get("source_url") or "").strip()
+            if single_url and single_url not in urls:
+                urls.insert(0, single_url)
+            out[title] = {
+                "ingredients": _parse_list_display(row.get("ingredients")),
+                "directions": _parse_list_display(row.get("directions")),
+                "source": str(row.get("source_name") or "Approved BigQuery recipe"),
+                "source_type": "bigquery_approved",
+                "source_urls": urls[:5],
+            }
+        return out
+    except Exception as e:
+        print(f"[recipes] approved detail store unavailable ({type(e).__name__}: {e})")
+        return {}
+
+
+def recipe_details(dishes, force_demo=False, note_sink=None):
+    """Reference recipe (ingredients as written + method) for chosen dishes.
+    Curated cards cover the demo dishes; live mode adds one parameterized
+    BigQuery lookup by raw title (deduped GROUP BY - RecipeNLG repeats titles).
+    Never raises; any skip reason is appended to note_sink so the UI can say
+    WHY live method text is missing instead of degrading silently."""
+    notes = note_sink if note_sink is not None else []
+    out = {}
+    for d in dishes:
+        title = d["title"]
+        # 1) real text already fetched in the single menu query (no title seam)
+        if d.get("_directions") or d.get("_ingredients"):
+            has_dir = bool(d.get("_directions"))
+            out[title] = {"ingredients": d.get("_ingredients", []),
+                          "directions": d.get("_directions", []),
+                          "source": ("RecipeNLG via BigQuery (home scale)" if has_dir
+                                     else "RecipeNLG ingredients via BigQuery"),
+                          "source_type": "bigquery_corpus", "source_urls": []}
+        # 2) curated card for the demo dishes
+        elif title in DEMO_RECIPES:
+            out[title] = {**DEMO_RECIPES[title], "source": "curated demo card",
+                          "source_type": "curated", "source_urls": []}
+    pairs = [(d["title"], d.get("raw_title", d["title"])) for d in dishes]
+    missing = [(t, r) for t, r in pairs if t not in out]
+    client = None if force_demo else get_bq_client()
+    if client is not None and missing:
+        cols = _recipe_detail_columns(client)
+        lacking = {"ingredients", "directions"} - cols if cols else set()
+        if lacking:
+            notes.append(
+                f"the BigQuery recipes table has no {'/'.join(sorted(lacking))} "
+                f"column(s) - re-load RecipeNLG with all columns for live method text")
+        else:
+            try:
+                from google.cloud import bigquery
+                raws = [r for _, r in missing]
+                sql = (f"SELECT title, ANY_VALUE(ingredients) AS ingredients, "
+                       f"ANY_VALUE(directions) AS directions FROM `{RECIPES_TABLE}` "
+                       f"WHERE title IN UNNEST(@titles) GROUP BY title")
+                cfg = bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ArrayQueryParameter("titles", "STRING", raws)],
+                    maximum_bytes_billed=20 * 1024**3)
+                rows = bq_read(client, sql, cfg)
+                by_raw = {str(r["title"]): r for _, r in rows.iterrows()}
+                unmatched = []
+                for title, raw in missing:
+                    r = by_raw.get(raw)
+                    if r is None:
+                        unmatched.append(title)
+                        continue
+                    ings = _parse_list_display(r["ingredients"])
+                    steps = _parse_list_display(r["directions"])
+                    if ings or steps:
+                        out[title] = {"ingredients": ings, "directions": steps,
+                                      "source": "RecipeNLG via BigQuery (home scale)",
+                                      "source_type": "bigquery_corpus",
+                                      "source_urls": []}
+                    else:
+                        unmatched.append(title)
+                if unmatched:
+                    notes.append("no corpus recipe text matched: " + ", ".join(unmatched))
+            except Exception as e:
+                notes.append(f"corpus recipe lookup failed ({type(e).__name__}: {e})")
+                print(f"[recipes] detail lookup skipped ({type(e).__name__}: {e})")
+    # Approved/corpus BigQuery details are the final authoritative tier. They
+    # can complete a partial RecipeNLG row without replacing its ingredients.
+    pending = [d for d in dishes if not out.get(d["title"], {}).get("directions")]
+    for title, approved in _approved_recipe_details(client, pending).items():
+        current = out.setdefault(title, {"ingredients": [], "directions": []})
+        had_corpus_ingredients = bool(current.get("ingredients"))
+        if not current.get("ingredients") and approved.get("ingredients"):
+            current["ingredients"] = approved["ingredients"]
+        if approved.get("directions"):
+            current["directions"] = approved["directions"]
+            current["source"] = (
+                "ingredients: RecipeNLG corpus; method: approved BigQuery details"
+                if had_corpus_ingredients else approved["source"])
+            current["source_type"] = "bigquery_approved"
+            current["source_urls"] = approved.get("source_urls", [])
+    missing_methods = [d["title"] for d in dishes
+                       if not out.get(d["title"], {}).get("directions")]
+    if missing_methods:
+        notes.append("method not found in BigQuery for " + ", ".join(missing_methods))
+    return out
+
+
+def recipe_card(dish, details, inventory):
+    """Build a recipe card, tagging each ingredient 'have' (in the walk-in),
+    'need' (on the supplier ticket), or 'pantry'. Ingredients come from the
+    full recipe text when available (curated or BigQuery); otherwise from the
+    dish's own corpus-matched produce (have + buyable need) so a card ALWAYS
+    renders in live mode, even if the table has no ingredients column.
+    Directions show only when the source provides them."""
+    inv = [clean_produce(k) for k in inventory]
+    need_clean = [clean_produce(n) for n in real_buys(dish.get("need", []))]
+
+    def status_of(text):
+        low = str(text).lower()
+        if any(i and i in low for i in inv):
+            return "have"
+        if any(n and n in low for n in need_clean):
+            return "need"
+        return "pantry"
+
+    if details and details.get("ingredients"):
+        lines = [{"text": t, "status": status_of(t)} for t in details["ingredients"]]
+        directions = details.get("directions", [])
+        source = details.get("source", "")
+        source_type = details.get("source_type", "bigquery_corpus")
+        source_urls = details.get("source_urls", [])
+    else:
+        # Guaranteed floor from the ranking data itself (NER-derived names), so
+        # live mode always has a card even without an ingredients/directions column.
+        lines = ([{"text": i, "status": "have"} for i in dish.get("have", [])]
+                 + [{"text": n, "status": "need"} for n in real_buys(dish.get("need", []))])
+        directions = []
+        source = "ingredients from the recipe corpus (names only)"
+        source_type = "ner_floor"
+        source_urls = []
+    if not lines:
+        return None
+    return {
+        "ingredients": lines, "directions": directions, "source": source,
+        "source_type": source_type, "source_urls": source_urls,
+        "method_status": "verified" if directions else "unavailable",
+        "adaptation": (details or {}).get("adaptation"),
+    }
+
+
+def attach_recipes(result, inventory, force_demo=False):
+    """Decorate a result with per-special recipe cards. Pure addition.
+    Any lookup skip reason lands in result['recipes_note'] for the UI."""
+    try:
+        notes = []
+        details = recipe_details(result.get("chosen", []), force_demo=force_demo,
+                                 note_sink=notes)
+        result["recipes"] = {
+            d["title"]: recipe_card(d, details.get(d["title"]), inventory)
+            for d in result.get("chosen", [])}
+        result["recipes_note"] = "; ".join(notes) if notes else None
+        refresh_recipe_coverage(result)
+    except Exception as e:
+        print(f"[recipes] attach skipped ({type(e).__name__}: {e})")
+    return result
+
+
+def refresh_recipe_coverage(result):
+    """Small UI contract: authoritative, enriched, and missing method counts."""
+    cards = [c for c in (result.get("recipes") or {}).values() if c]
+    canonical_types = {"bigquery_corpus", "bigquery_approved", "curated"}
+    result["recipe_coverage"] = {
+        "total": len(result.get("chosen", [])),
+        "canonical": sum(c.get("source_type") in canonical_types
+                         and bool(c.get("directions")) for c in cards),
+        "search": sum(c.get("source_type") == "search_fallback"
+                      and bool(c.get("directions")) for c in cards),
+        "missing": sum(not c.get("directions") for c in cards),
+    }
+    return result["recipe_coverage"]
+
+
 def today_brief(inventory):
     """Live 'today' signals for the sidebar: date, near-expiry items, and mandi
     spikes - computed from the current stock + today's prices, not hardcoded."""
@@ -519,10 +936,22 @@ def today_brief(inventory):
     return {"date": datetime.date.today().isoformat(), "near_expiry": near, "spikes": spikes}
 
 
-def run_pipeline(inventory, force_demo=False):
+def run_pipeline(inventory, force_demo=False, runtime=None):
     """One call that runs the whole flow and returns everything the UI needs.
-    Includes wall-clock timings so the UI can show time-to-decision honestly."""
+    Includes wall-clock timings so the UI can show time-to-decision honestly.
+
+    Phase 2: runtime="agents" (or SOUS_AGENT_RUNTIME=agents) routes through the
+    negotiating multi-agent orchestrator (agents/), which returns a SUPERSET of
+    this dict. Default stays "legacy" - the Phase 1 path below is untouched and
+    remains the fallback if the agent runtime is unavailable for any reason."""
     import time
+    runtime = (runtime or os.environ.get("SOUS_AGENT_RUNTIME", "legacy")).strip().lower()
+    if runtime == "agents":
+        try:
+            from agents.orchestrator import run_agents_pipeline
+            return run_agents_pipeline(inventory, force_demo=force_demo)
+        except Exception as e:
+            print(f"[agents] runtime unavailable ({type(e).__name__}: {e}); using legacy pipeline")
     t0 = time.perf_counter()
     dishes, menu_source = menu_agent(inventory, force_demo=force_demo)
     t1 = time.perf_counter()
@@ -532,11 +961,27 @@ def run_pipeline(inventory, force_demo=False):
     chosen = select_chosen(dishes, coord_text, brief)
     po = build_purchase_order(chosen, inventory)
     t3 = time.perf_counter()
-    return {"dishes": dishes, "menu_source": menu_source, "brief": brief,
-            "coord_text": coord_text, "chosen": chosen, "po": po,
-            "trail": explain_trail(chosen, brief),
-            "timings": {"menu_s": round(t1 - t0, 2), "negotiate_s": round(t2 - t1, 2),
-                        "order_s": round(t3 - t2, 2), "total_s": round(t3 - t0, 2)}}
+    result = {"dishes": dishes, "menu_source": menu_source, "brief": brief,
+              "coord_text": coord_text, "chosen": chosen, "po": po,
+              "trail": explain_trail(chosen, brief), "runtime": "legacy",
+              "timings": {"menu_s": round(t1 - t0, 2), "negotiate_s": round(t2 - t1, 2),
+                          "order_s": round(t3 - t2, 2), "total_s": round(t3 - t0, 2)}}
+    try:
+        # Phase 2 decoration: forecast / margin-risk / buy-timing (pure addition;
+        # never changes picks, quantities, or totals). Guarded so legacy behavior
+        # survives any forecast-layer failure.
+        import forecast as _fc
+        _fc.attach(result, inventory)
+    except Exception as e:
+        print(f"[forecast] attach skipped ({type(e).__name__}: {e})")
+    attach_recipes(result, inventory, force_demo=force_demo)
+    try:
+        from recipe_enrichment import enrich_missing_recipes
+        enrich_missing_recipes(result, inventory)
+    except Exception as e:
+        print(f"[recipes] search enrichment skipped ({type(e).__name__}: {e})")
+        refresh_recipe_coverage(result)
+    return result
 
 
 if __name__ == "__main__":

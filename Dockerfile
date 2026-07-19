@@ -11,7 +11,9 @@ COPY requirements-gpu.txt .
 RUN pip3 install --extra-index-url=https://pypi.nvidia.com -r requirements-gpu.txt
 COPY .streamlit/ ./.streamlit/
 COPY static/ ./static/
-COPY sous_core.py app.py ./
+COPY agents/ ./agents/
+COPY sous_core.py app.py forecast.py recipe_enrichment.py ./
+COPY ui_components.py ui_refinement.py ./
 RUN useradd --create-home sous && chown -R sous /app
 USER sous
 ENV PORT=8080 SOUS_USE_GPU=1

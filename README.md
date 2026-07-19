@@ -8,6 +8,27 @@ protecting food-cost margin on the days ingredient prices spike.
 Built for the Gemini AI Academy APAC hackathon (Statement 2: a data-intelligence
 tool that shows GPU acceleration helps, using named Google Cloud + NVIDIA techs).
 
+**Phase 1 baseline:** [`90a1db6`](https://github.com/MabelHsu/sous-chef/commit/90a1db6d89b49223426d732028159eb75f169795)
+
+## Phase 2
+
+Phase 2 keeps Phase 1's deterministic margin core and adds:
+
+- coordinator-led Menu / Price / Nutrition / Margin specialists;
+- up to three traced negotiation rounds with a hard food-cost veto;
+- deterministic 7-day price forecasts, margin risk, and buy timing;
+- recipe coverage and provenance for all three selected specials;
+- a control room with transcript, trace export, veto ledger, and human gates;
+- an editable inventory drawer that stays folded during service;
+- scheduled-draft, price-feed, recipe-store, and trace-replay operator scripts.
+
+### Recipe source policy
+
+1. BigQuery RecipeNLG corpus is the primary source.
+2. `sous.recipe_details` supplies reviewed/corpus-backed complete methods.
+3. Gemini + Google Search runs only when both BigQuery layers miss; it remains
+   labelled and never changes deterministic purchase quantities.
+
 ## The problem
 
 Food is a restaurant's largest controllable cost -- typically 28-35% of revenue.
@@ -43,13 +64,14 @@ Coordinator brokers a menu that survives every constraint.
 
 ## How it works (at a glance)
 
-    today's mandi prices  +  walk-in stock  +  recipe corpus
-        -> menu agent        (what can we cook?)
-        -> briefing          (cost, food-cost %, spike, expiry, diet per dish)
-        -> Coordinator       (Gemini on Vertex AI negotiates) or margin-aware fallback
-        -> three specials    (all under the food-cost target)
-        -> purchase order    (buy only the shortfall)
-        -> chef approves     -> order ticket + CSV + audit trail
+    mandi prices + editable walk-in + BigQuery RecipeNLG corpus
+        -> menu candidates + deterministic cost / expiry / nutrition evidence
+        -> Coordinator delegates to Menu / Price / Nutrition / Margin agents
+        -> hard margin guardrail + up to three negotiation rounds
+        -> three specials + 7-day margin risk + buy timing
+        -> BigQuery recipe method; reviewed store; labelled Search fallback
+        -> deterministic supplier shortfall ticket
+        -> chef approves -> CSV/TXT export + trace + veto ledger
 
 ## Named technologies
 
@@ -63,43 +85,26 @@ Coordinator brokers a menu that survives every constraint.
   there is no API key to manage.
 - Cloud Run -- containerized public deployment; scales to zero, no server to manage.
 
-## Run locally (no GCP or keys needed -- uses demo data)
-
-    pip install -r requirements.txt
-    streamlit run app.py
-
-Open http://localhost:8501, edit the walk-in stock, and click
-"Fire today's specials".
-
-### Optional: connect the real services
-
-    export SOUS_PROJECT_ID=your-gcp-project   # BigQuery + Vertex AI project
-    export VERTEX_LOCATION=global        # Vertex region that serves the model
-    export GEMINI_MODEL=gemini-3.1-flash-lite
-    gcloud auth application-default login      # local ADC so Vertex works, no API key
-
-Gemini runs on Vertex AI via the service account -- no API key. (A `GEMINI_API_KEY`
-is still supported as an optional fallback for a quick local run without ADC.)
-
-## Deploy to Cloud Run
-
-    gcloud run deploy sous --source . --region asia-south1 --allow-unauthenticated \
-      --set-env-vars SOUS_PROJECT_ID=YOUR_PROJECT_ID,GEMINI_MODEL=gemini-3.1-flash-lite,VERTEX_LOCATION=global
-
-The command prints the public Service URL. The Cloud Run service account needs the
-BigQuery Job User, BigQuery Data Viewer, and Vertex AI User (roles/aiplatform.user)
-roles. See DEPLOY.md for the full step-by-step.
-
 ## Honest limitations
 
-- RecipeNLG has ingredient names only (no quantities), so plate cost is a
-  defensible indicator, not penny-accurate costing.
-- Prices are a cached daily snapshot (with a demo spike) so a recorded demo stays
-  stable.
+- Plate cost is decision support, not accounting-grade recipe costing; the
+  deterministic order model uses normalized ingredient assumptions for 20 covers.
+- The current `sous.recipes` ranking table lacks `directions`; reviewed methods
+  live in `sous.recipe_details`, with Gemini + Search used only as a labelled miss
+  fallback.
+- Price forecasts are deterministic demo signals until the Agmarknet feed is scheduled.
 
 ## Project layout
 
-    app.py            Streamlit interface
-    sous_core.py      the pipeline (agents, negotiation, purchase order), importable
-    Dockerfile        Cloud Run container
-    requirements.txt
+    app.py                 Streamlit service UI and control room
+    sous_core.py           deterministic decision and purchase-order core
+    recipe_enrichment.py   BigQuery-first recipe completion policy
+    forecast.py            7-day risk and buy-timing signals
+    agents/                coordinator, specialists, contracts, tracing
+    ui_components.py       recipe provenance and coverage components
+    ui_refinement.py       Phase 2 responsive visual refinements
+    scripts/               operator tools: prices, recipes, trace replay
+    benchmark.py           pandas vs cuDF evidence workloads
+    tests/                 deterministic contracts and regression coverage
+    Dockerfile             Cloud Run NVIDIA L4 container
+    requirements*.txt      CPU/local and GPU dependency sets

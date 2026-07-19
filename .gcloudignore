@@ -6,6 +6,11 @@ __pycache__/
 *.pyc
 .agents/
 
+.claude/
+.codex/
+.gemini/
+.idea/
+.vscode/
 # Hackathon -- not needed to run the app
 Sous_Complete_Build.ipynb
 sous-project-brief.md
@@ -19,3 +24,18 @@ DEPLOY.md
 purchase_order.csv
 purchase_order.txt
 RecipeNLG_dataset.csv
+
+# Phase 2 local artifacts (jobs write these; the service doesn't need them)
+drafts/
+prices/
+scripts/
+docs/
+trace*.json
+*.log
+.coverage
+htmlcov/
+tests/
+
+# Local env file - values go to Cloud Run via --set-env-vars / Secret Manager
+.env
+.env.*
